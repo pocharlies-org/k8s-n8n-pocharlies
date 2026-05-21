@@ -1,0 +1,123 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: n8n
+---
+# n8n — workflow automation platform
+# Image: docker.n8n.io/n8nio/n8n:latest (amd64/arm64 multi-arch)
+# SQLite stored on Longhorn PVC. Secrets from ExternalSecret (Vault).
+# Internal only: n8n.lan.e-dani.com (Authelia protected)
+# If n8n webhooks need to be public → add public IngressRoute in Phase 11
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: n8n-data
+  namespace: n8n
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 5Gi } }
+  storageClassName: longhorn
+---
+# Secrets — encryption key + basic auth via ExternalSecret (Vault path: secret/n8n)
+# Manually create in Vault before deploying:
+#   vault kv put secret/n8n \
+#     N8N_ENCRYPTION_KEY=<32-char-random> \
+#     N8N_BASIC_AUTH_USER=admin \
+#     N8N_BASIC_AUTH_PASSWORD=<password>
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: n8n-secrets
+  namespace: n8n
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: vault-backend
+    kind: ClusterSecretStore
+  target:
+    name: n8n-secrets
+    creationPolicy: Owner
+  data:
+    - secretKey: N8N_ENCRYPTION_KEY
+      remoteRef: { key: secret/n8n, property: N8N_ENCRYPTION_KEY }
+    - secretKey: N8N_BASIC_AUTH_PASSWORD
+      remoteRef: { key: secret/n8n, property: N8N_BASIC_AUTH_PASSWORD }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: n8n
+  namespace: n8n
+spec:
+  replicas: 1
+  strategy: { type: Recreate }   # single replica with RWO PVC
+  selector: { matchLabels: { app: n8n } }
+  template:
+    metadata: { labels: { app: n8n } }
+    spec:
+      enableServiceLinks: false
+      securityContext:
+        runAsUser: 1000
+        fsGroup: 1000
+      nodeSelector:
+        topology: lan
+        kubernetes.io/arch: amd64
+      containers:
+        - name: n8n
+          image: docker.n8n.io/n8nio/n8n:latest
+          ports:
+            - { name: http, containerPort: 5678 }
+          env:
+            - { name: N8N_HOST, value: "n8n.lan.e-dani.com" }
+            - { name: N8N_PORT, value: "5678" }
+            - { name: N8N_PROTOCOL, value: "https" }
+            - { name: WEBHOOK_URL, value: "https://n8n.lan.e-dani.com/" }
+            - { name: GENERIC_TIMEZONE, value: "Europe/Madrid" }
+            - { name: TZ, value: "Europe/Madrid" }
+            - { name: N8N_BASIC_AUTH_ACTIVE, value: "false" }   # Authelia handles auth
+            - { name: N8N_SECURE_COOKIE, value: "true" }
+            - { name: DB_TYPE, value: "sqlite" }
+            - { name: DB_SQLITE_VACUUM_ON_STARTUP, value: "false" }
+            - name: N8N_ENCRYPTION_KEY
+              valueFrom: { secretKeyRef: { name: n8n-secrets, key: N8N_ENCRYPTION_KEY } }
+          volumeMounts:
+            - { name: data, mountPath: /home/node/.n8n }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits:   { memory: 1Gi }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 5678 }
+            initialDelaySeconds: 20
+            periodSeconds: 15
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: n8n-data }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: n8n
+  namespace: n8n
+spec:
+  selector: { app: n8n }
+  ports:
+    - { name: http, port: 80, targetPort: 5678 }
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: n8n
+  namespace: n8n
+spec:
+  entryPoints: [websecure]
+  routes:
+    - match: Host(`n8n.lan.e-dani.com`)
+      kind: Rule
+      services:
+        - name: n8n
+          port: 80
+      middlewares:
+        - { name: authelia, namespace: authelia }
+  tls:
+    secretName: wildcard-lan-tls
