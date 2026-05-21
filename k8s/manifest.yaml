@@ -197,7 +197,29 @@ spec:
               valueFrom: { secretKeyRef: { name: n8n-app, key: N8N_ENCRYPTION_KEY } }
             - name: N8N_LICENSE_ACTIVATION_KEY
               valueFrom: { secretKeyRef: { name: n8n-app, key: N8N_LICENSE_ACTIVATION_KEY, optional: true } }
+            - { name: EXTERNAL_HOOK_FILES, value: "/opt/n8n-hooks/workflow-backup-hook.js" }
+            - name: N8N_BACKUP_WEBHOOK_URL
+              valueFrom: { secretKeyRef: { name: n8n-workflow-backup, key: N8N_BACKUP_WEBHOOK_URL } }
+            - name: N8N_BACKUP_WEBHOOK_SECRET
+              valueFrom: { secretKeyRef: { name: n8n-workflow-backup, key: N8N_BACKUP_WEBHOOK_SECRET } }
+            - name: GITHUB_TOKEN
+              valueFrom: { secretKeyRef: { name: n8n-workflow-backup, key: GITHUB_TOKEN } }
+            - name: GITHUB_OWNER
+              valueFrom: { secretKeyRef: { name: n8n-workflow-backup, key: GITHUB_OWNER } }
+            - name: GITHUB_REPO
+              valueFrom: { secretKeyRef: { name: n8n-workflow-backup, key: GITHUB_REPO } }
+            - name: GITHUB_BRANCH
+              valueFrom: { secretKeyRef: { name: n8n-workflow-backup, key: GITHUB_BRANCH } }
+            - name: GITHUB_WORKFLOW_BACKUP_PATH
+              valueFrom: { secretKeyRef: { name: n8n-workflow-backup, key: GITHUB_WORKFLOW_BACKUP_PATH } }
+            - name: N8N_BACKUP_EXCLUDE_WORKFLOW_IDS
+              valueFrom: { secretKeyRef: { name: n8n-workflow-backup, key: N8N_BACKUP_EXCLUDE_WORKFLOW_IDS } }
+            - name: N8N_BACKUP_SOURCE_INSTANCE
+              valueFrom: { secretKeyRef: { name: n8n-workflow-backup, key: N8N_BACKUP_SOURCE_INSTANCE } }
+            - name: N8N_BACKUP_HOOK_TIMEOUT_MS
+              valueFrom: { secretKeyRef: { name: n8n-workflow-backup, key: N8N_BACKUP_HOOK_TIMEOUT_MS } }
           volumeMounts:
+            - { name: workflow-backup-hook, mountPath: /opt/n8n-hooks/workflow-backup-hook.js, subPath: workflow-backup-hook.js, readOnly: true }
             - { name: data, mountPath: /home/node/.n8n }
           resources:
             requests: { cpu: 200m, memory: 512Mi }
@@ -214,6 +236,8 @@ spec:
             timeoutSeconds: 10
             failureThreshold: 5
       volumes:
+        - name: workflow-backup-hook
+          configMap: { name: n8n-workflow-backup-hook }
         - name: data
           persistentVolumeClaim: { claimName: n8n-data }
 ---
