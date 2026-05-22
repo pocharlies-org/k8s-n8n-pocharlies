@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   update:
-    runs-on: arc-n8n
+    runs-on: arc-k8s
     steps:
       - uses: actions/checkout@v4
 
