@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   update:
-    runs-on: ubuntu-latest
+    runs-on: arc-n8n
     steps:
       - uses: actions/checkout@v4
 
