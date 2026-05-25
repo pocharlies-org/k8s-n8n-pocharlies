@@ -161,7 +161,7 @@ spec:
         kubernetes.io/hostname: ubuntu
       containers:
         - name: n8n
-          image: docker.n8n.io/n8nio/n8n:2.22.2
+          image: docker.n8n.io/n8nio/n8n:2.22.3
           imagePullPolicy: IfNotPresent
           ports:
             - { name: http, containerPort: 5678 }
